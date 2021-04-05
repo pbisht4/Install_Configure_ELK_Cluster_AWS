@@ -1,0 +1,21 @@
+---
+###################################################################################################
+## Description: This playbook will execute to start elasticsearch and kibana on els cluster
+## OS Dependency: RHEL 7.x
+## Playbook Dependency: None
+## Role Dependency: None
+#####################################################################################################
+
+    - name: Start ElasticSearch
+      command: systemctl start elasticsearch.service
+
+    - name: refresh the service systemctl
+      command: /bin/systemctl daemon-reload
+      ignore_errors: yes
+
+    - name: Enable elasticsearch.service
+      command: /bin/systemctl enable elasticsearch.service
+
+    - name: Start Kibana
+      service: name=kibana state=started enabled=yes
+

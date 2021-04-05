@@ -1,0 +1,58 @@
+###################################################################################################
+## Description: This playbook will execute to install kibana on els cluster
+## OS Dependency: RHEL 7.x
+## Playbook Dependency: None
+## Role Dependency: None
+#####################################################################################################
+---
+
+    - name: rpm import on datanodes for kibana
+      command: rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+    - name: Create kibana repo file
+      file: path=/etc/yum.repos.d/kibana.repo state=touch owner=root group=root
+
+    - name: Create kibana repo
+      lineinfile: dest=/etc/yum.repos.d/kibana.repo line={{ lookup('file','files/kibana.repo') }}
+
+    - name: Install kibana
+      yum: name=kibana-{{ kib_ver }} state=present
+
+    - name: Create /opt/kibana directory
+      file: path=/opt/kibana state=directory mode=2770 owner=root group=kibana
+
+    - name: update server.port in kibana.yml
+      lineinfile: dest=/etc/kibana/kibana.yml regexp='^#server.port*' line='server.port{{":"}} 5601' backup=yes owner=root group=root mode=664 backrefs=yes
+
+    - name: update server.host in kibana.yml
+      lineinfile: dest=/etc/kibana/kibana.yml regexp='^#server.host*' line='server.host{{":"}} "{{ ansible_nodename }}"' backup=yes owner=root group=root mode=664 backrefs=yes
+
+    - name: update server.name in kibana.yml
+      lineinfile: dest=/etc/kibana/kibana.yml regexp='^#server.name*' line='server.name{{":"}} "{{ ansible_nodename }}"' backup=yes owner=root group=root mode=664 backrefs=yes
+
+    - name: update elasticsearch URL in kibana.yml
+      lineinfile: dest=/etc/kibana/kibana.yml regexp='^#elasticsearch.url*' line='elasticsearch.url{{":"}} "http{{":"}}{{"//"}}{{ ansible_nodename }}{{":"}}9200"' backup=yes owner=root group=root mode=664 backrefs=yes
+
+    - name: update logging location in kibana.yml
+      lineinfile: dest=/etc/kibana/kibana.yml regexp='^#logging.dest*' line='logging.dest{{":"}} /opt/kibana/kibana.log' backup=yes owner=root group=kibana mode=770 backrefs=yes
+
+    - name: enable logging in kibana.yml
+      lineinfile: dest=/etc/kibana/kibana.yml regexp='^#logging.silent*' line='logging.silent{{":"}} false' backup=yes owner=root group=root mode=664 backrefs=yes
+
+    - name: Supress xpack message
+      lineinfile: dest=/etc/kibana/kibana.yml insertafter='^logging.silent*' line='xpack.monitoring.report_stats{{":"}} false' backup=yes owner=root group=root mode=664
+
+    - name: Add xpack.security.sessionTimeout in /etc/kibana/kibana.yml
+      lineinfile: path=/etc/kibana/kibana.yml regexp=EOF line="### session timeout for xpach.security\nxpack.security.sessionTimeout{{":"}} 900000"
+
+    - name: change ownership of /opt/kibana recursively
+      file: path=/opt/kibana recurse=true owner=root group=kibana mode=770
+
+    - name: Install x-pack plugin
+      command: /usr/share/kibana/bin/kibana-plugin install x-pack
+      ignore_errors: yes
+
+    - name: change ownership of /opt/kibana/kibana.log
+      file: path=/opt/kibana/kibana.log owner=kibana group=kibana
+      ignore_errors: yes
+    

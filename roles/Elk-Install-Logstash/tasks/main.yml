@@ -1,0 +1,19 @@
+---
+###################################################################################################
+## Description: This playbook will execute to install logstash on els cluster
+## OS Dependency: RHEL 7.x
+## Playbook Dependency: None
+## Role Dependency: None
+#####################################################################################################
+
+  - name: Create logstash repo file
+    copy: src=./logstash_repo dest=/etc/yum.repos.d/logstash.repo owner=root group=root mode=644
+
+  - name: Import the gpg key
+    command: rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+  - name: Clean repo
+    command: yum clean all
+
+  - name: Install logstash package
+    yum: name=logstash-{{logstash_ver}} state=installed

@@ -1,0 +1,113 @@
+---
+###################################################################################################
+## Description: This playbook will execute to install elasticsearch on els cluster
+## OS Dependency: RHEL 7.x
+## Playbook Dependency: None
+## Role Dependency: None
+#####################################################################################################
+
+
+    - name: Enable epel-repo
+      replace: path=/etc/yum.repos.d/epel.repo regexp="enabled=0" replace="enabled=1" backup=yes
+
+    - name: Run yum clean
+      shell: yum clean all
+
+    - name: install java
+      yum: name=java-1.8.0-openjdk-devel.x86_64 state=present
+
+    - name: add java home in etc profile
+      lineinfile: dest=/etc/profile regexp="export JAVA_HOME" line="export JAVA_HOME=/etc/alternatives/java_sdk"
+
+    - name: remove older version of java
+      yum: name=java-1.7.0 state=absent
+
+    - name: remove older version of java-1.7.0-openjdk
+      yum: name=java-1.7.0-openjdk-headless state=absent
+
+    - name: create repo
+      copy: src=./elasticsearch_repo dest=/etc/yum.repos.d/elasticsearch.repo owner=root group=root mode=644
+  
+    - name: install packages
+      yum: name={{ item }} state=installed
+      with_items:
+       - elasticsearch-{{ els_ver }}
+
+    - name: update MAX_OPEN_FILES /etc/elasticsearch/elasticsearch.yml
+      replace: dest=/etc/sysconfig/elasticsearch regexp='^#MAX_OPEN_FILES=65536' replace='MAX_OPEN_FILES=65536' backup=yes owner=root group=root mode=660
+
+    - name: update MAX_MAP_COUNT /etc/elasticsearch/elasticsearch.yml
+      replace: dest=/etc/sysconfig/elasticsearch regexp='^#MAX_MAP_COUNT=262144' replace='MAX_MAP_COUNT=262144' backup=yes owner=root group=root mode=660
+
+    - name: Create the volume group
+      lvg: vg=datavg01 pvs=/dev/{{ dev_name }}
+
+    - name: create logical volume for els data path
+      lvol: vg=datavg01 lv=datalv01 size=100%FREE
+      ignore_errors: yes
+
+    - name: format the volume
+      filesystem: fstype=xfs dev=/dev/datavg01/datalv01
+
+    - name: mounting new filesystem /data
+      mount: name=/data src=/dev/datavg01/datalv01 fstype=xfs state=mounted opts=defaults,nofail
+
+    - name: change permission and mode of /data
+      file: path=/data state=directory mode=0770 owner=root group=elasticsearch 
+ 
+    - name: create log folder 
+      file: path=/opt/elastic/log state=directory mode=0770 owner=root group=elasticsearch 
+      
+    - name: update cluster name in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#cluster.name*' line='cluster.name{{":"}} {{ cluster_unique_id }}' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes
+
+    - name: update node.name  in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#node.name*' line='node.name{{":"}} {{ ansible_nodename }}' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes 
+
+    - name: update path.data in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#path.data*' line='path.data{{":"}} /data' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes    
+
+    - name: update path.logs in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#path.logs*' line='path.logs{{":"}} /opt/elastic/log' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes 
+    
+    - name: update network.host in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#network.host*' line='network.host{{":"}} {{ ansible_nodename }}' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes
+      when: els_ver == "5.3.2"
+
+    - name: update network.host in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#network.host*' line='network.host{{":"}} 0.0.0.0' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes
+      when: els_ver == "6.4.0"
+
+    - name: update transport.host in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#transport.host*' line='transport.host{{":"}} localhost' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes
+      when: els_ver == "6.4.0"
+
+    - name: update transport.tcp.port in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml insertafter='transport.host' line='transport.tcp.port{{":"}} 9300'
+      when: els_ver == "6.4.0"
+
+    - name: update http.port in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#http.port*' line='http.port{{":"}} 9200' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes
+
+    - name: update discovery.zen.ping.unicast.hosts in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#discovery.zen.ping.unicast.hosts*' line='discovery.zen.ping.unicast.hosts{{":"}} [{% for node in groups['cluster'] -%}"{{ hostvars[node].ansible_fqdn }}"{% if not loop.last %}{{", "}}{% endif %}{% endfor %}]' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes   
+
+    - name: update discovery.zen.minimum_master_nodes in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml regexp='^#discovery.zen.minimum_master_nodes*' line='discovery.zen.minimum_master_nodes{{":"}} 2' backup=yes owner=root group=elasticsearch mode=660 backrefs=yes
+
+    - name: Install x-pack plugin
+      shell: /usr/share/elasticsearch/bin/elasticsearch-plugin install x-pack
+      ignore_errors: yes
+
+    - name: update ldap detail in elasticsearch.yml
+      lineinfile: dest=/etc/elasticsearch/elasticsearch.yml line={{ lookup('file','files/ldap_64') }}
+
+    - name: update /usr/share/elasticsearch folder ownership
+      file: path=/usr/share/elasticsearch  owner=root group=elasticsearch recurse=yes 
+
+    - name: Update /etc/sysconfig/elasticsearch file ownership
+      file: path=/etc/sysconfig/elasticsearch owner=root group=elasticsearch
+
+    - name: Disable epel-repo
+      replace: path=/etc/yum.repos.d/epel.repo regexp="enabled=1" replace="enabled=0" backup=yes
+

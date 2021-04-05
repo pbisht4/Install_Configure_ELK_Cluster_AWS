@@ -1,0 +1,22 @@
+bootstrap.system_call_filter: false
+xpack:
+  security:
+    authc:
+      realms:
+        ldap1:
+          type: ldap
+          order: 0
+          url: "ldaps://pxedv2ndh.abc.com:6360"
+          bind_dn: "cn=<BindUserName>,OU=People,DC=pxed,DC=abc,DC=com"
+          bind_password: <password>
+          user_search:
+            base_dn: "dc=pxed,dc=abc,dc=com"
+            attribute: cn
+          group_search:
+            base_dn: "dc=pxed,dc=abc,dc=com"
+          files:
+            role_mapping: "/etc/elasticsearch/x-pack/role_mapping.yml"
+          unmapped_groups_as_roles: false
+    audit:
+      enabled: true
+      outputs: [ index, logfile ]

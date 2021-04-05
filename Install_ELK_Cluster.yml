@@ -1,0 +1,68 @@
+---
+########################################
+## Description: This playbook is executed to launch a ELK cluster for given comma separated instance ips
+## OS Dependency: RHEL 7.x
+## Playbook Dependency: Create_LVM_Elk.yml
+## Role Dependency: Elk-Install-ELS,Elk-Install-Kibana,Elk-Manage-Service,Elk-Postchanges 
+#########################################
+
+## Play to add cluster hosts
+
+- hosts: localhost
+  tasks:
+
+    - name: Break the ip address separated by comma
+      shell: echo "{{elsip}}" | sed -e $'s/,/\\\n/g'
+      register: elsipvar
+
+    - name: add cluster hosts
+      add_host: hostname={{ item }} groupname=cluster private_ip={{ item }}
+      with_items:
+        - "{{ elsipvar.stdout_lines }}"
+
+
+####awscli and pip installation
+- hosts: cluster
+  become: yes
+  tasks:
+    - block:
+       - name: enable repo in epel
+         replace: path=/etc/yum.repos.d/epel.repo regexp="enabled=0" replace="enabled=1" backup=yes
+       - name: install pip
+         yum:
+           name: python-pip
+           state: latest
+       - name: install awscli
+         pip:
+           name: awscli
+           state: latest
+      always:
+       - name: disable repo in epel
+         replace: path=/etc/yum.repos.d/epel.repo regexp="enabled=1" replace="enabled=0" backup=yes
+
+
+
+## Include roles to install els,install kibana,pstchanges and manage service
+
+- hosts: cluster
+  become: yes
+  roles:
+    - Elk-Install-ELS 
+    - Elk-Install-Kibana
+    - Elk-Install-Logstash
+    - Elk-Postchanges
+    - Elk-Start-Service
+
+- hosts: localhost
+  tasks:
+   - name: Send out mail for Installation of ELK
+     mail:
+        host="{{ smtp_host }}"
+        port=25
+        timeout=60
+        from="{{ email_dl }}"
+        to="{{ email_dl }}"
+        subject="{{subj}} has been completed successfully"
+        cc="{{ email_dl }}"
+        body="{{subj}} on nodes {{elsip}} has been completed successfully."
+
